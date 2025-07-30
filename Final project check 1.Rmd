@@ -1,0 +1,187 @@
+---
+title: "Final project"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-07-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Identify one gene, one continuous covariate, and two categorical covariates in the provided dataset.
+Generate the following three plots using ggplot2 for your covariates of choice: charlson score, disease status, sex
+ 
+```{r}
+
+### Read in files.
+
+setwd("/Users/mengyingxia/Desktop/QBS103/Final_project")
+
+#check where we are
+getwd()
+
+#use read.csv
+gene_exp  <- read.csv(file ="QBS103_GSE157103_genes.csv",row.names=1)
+meta_data <- read.csv(file = "QBS103_GSE157103_series_matrix-1.csv",row.names=1)
+
+
+#my rationale to choose the gene - the range of expression is wide across sample
+
+#calculate range for each row
+diff_exp <- apply(gene_exp, 1, function(x) max(x) - min(x))
+
+#sort the range
+diff_exp <- sort(diff_exp)
+print(diff_exp)
+
+#The gene I choose is ABHD5 and the reference is https://www.ncbi.nlm.nih.gov/gene/51099
+```
+
+combine gene expression data and demographic data
+
+```{r}
+
+#reshape the gene expression data
+exp_ABHD5 <- as.data.frame(t(gene_exp["ABHD5",]))
+
+#there is one row named differently in two data sets, locate and rename it
+setdiff(rownames(meta_data),rownames(exp_ABHD5))
+setdiff(rownames(exp_ABHD5),rownames(meta_data))
+
+#the age was missing for this participant
+rownames(meta_data)[rownames(meta_data) == "COVID_06_:y_male_NonICU"] <- "COVID_06_missing_male_NonICU"
+rownames(exp_ABHD5)[rownames(exp_ABHD5) == "COVID_06_.y_male_NonICU"] <- "COVID_06_missing_male_NonICU"
+
+#check if the rowname is identical after renaming
+identical(rownames(meta_data),rownames(exp_ABHD5))
+
+#merge
+df <- merge(meta_data, exp_ABHD5, by = "row.names")
+
+#change the rowname and drop the first column which is rowname
+rownames(df) <- df[,1]
+df <- df[,-1]
+
+```
+
+Histogram for gene expression (5 pts)   
+
+```{r}
+library(ggplot2)
+
+# Create histogram
+ggplot(df, aes(x = ABHD5)) +
+  geom_histogram(aes(y=..density..*100), 
+                 binwidth = 5, 
+                 fill = "lightblue", 
+                 color = "white", 
+                 boundary = 0) +
+  geom_smooth(aes(y = ..density..*100),
+              stat = "density", 
+              color = "#5B91BE" , size = 0.5) +
+  labs(title = "Distribution of the Gene Expression of ABHD5", 
+       x = "Gene Expression of ABHD5", 
+       y = "Percent Density (%)") +
+  scale_x_continuous(breaks = c(0, 25, 50, 75, 100, 125, 150, 175)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  
+    panel.grid.major = element_line(color = "gray", 
+                                    size = 0.5, 
+                                    linetype = "dotted"),
+    panel.grid.minor = element_line(color = "gray", 
+                                    size = 0.5, 
+                                    linetype = "dotted"),
+    panel.border = element_rect(color = "black", fill = NA, size = 0.8),
+    panel.background = element_rect(fill = "white"),
+    #plot.background = element_rect(fill = "lightgray"),
+    axis.line = element_blank()  
+  )
+
+```
+
+Scatterplot for gene expression and continuous covariate (5 pts)
+```{r}
+
+#check the spelling of each category, pay attention to the blank in front of the character
+table(df$sex)
+levels(df$sex) 
+
+#change the name of each level
+df <- df[which(!df$sex == " unknown"),]
+df$sex[df$sex == " female"] <- "Female"
+df$sex[df$sex == " male"] <- "Male"
+df$sex<-as.factor(df$sex)
+
+dim(df)
+
+levels(factor(df$sex))
+
+ggplot(df, aes(x = charlson_score, y = ABHD5, color = sex)) +
+    geom_point(shape = 1, size = 1, stroke = 1)+
+    geom_smooth(method = "lm", size = 1.2, fill = NA)+
+  labs(title = "Distribution of the Gene Expression of ABHD5 \n According to Charlson Score by Sex",
+       x = "Charlson Score",
+       y = "Gene Expression of ABHD5",
+       color = "Sex") +
+  scale_x_continuous(breaks = c(0,2,4,6,8,10))+
+  theme(
+    plot.title = element_text(hjust = 0.5, face="bold"),  
+    panel.background = element_rect(fill = "white"),
+    plot.background = element_rect(fill = "lightgray"),
+    panel.grid.major = element_line(color = "gray", 
+                                    size = 0.5, 
+                                    linetype = "dotted"),
+    panel.grid.minor = element_line(color = "gray", 
+                                    size = 0.5, 
+                                    linetype = "dotted"),
+    axis.line = element_line(color = "black"),
+    legend.position = "right")
+
+# we can see from the plot that there are a potential different patterns for female and male: 
+# the expression of ABHD5 tends to increase along the increase of Charlson Score in female, 
+# while the expression of ABHD5 tends to decrease along the increase of Charlson Score. 
+# The line graphs converge at a point with Charlson Score being 9. 
+# Given there is an extraordinary outlier in male, such pattern will need further study to confirm.
+```
+Boxplot of gene expression separated by both categorical covariates (5 pts)
+
+```{r}
+
+#check the spelling of each category
+table(df$disease_status)
+
+#change the name
+df$disease_status[df$disease_status == "disease state: COVID-19"] <- "COVID-19"
+df$disease_status[df$disease_status == "disease state: non-COVID-19"] <- "non-COVID-19"
+df$disease_status<-as.factor(df$disease_status)
+
+#check each category again
+table(df$disease_status)
+
+ggplot(df, aes(x = sex, y = ABHD5, fill = disease_status)) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  labs(title = "Distribution of the Gene Expression of ABHD5 \n by Disease Status and Sex",
+       x = "Sex",
+       y = "Gene Expression of ABHD5",
+       fill = "Disease status") +
+  theme(
+    plot.title = element_text(hjust = 0.5, face="bold"),  
+    panel.background = element_rect(fill = "white"),
+    plot.background = element_rect(fill = "lightgray"),
+    panel.border = element_rect(color = "black", fill = NA, size = 0.8),
+    panel.grid = element_blank(),
+    axis.line = element_blank(),
+    legend.position = "right")
+
+#the patients with COVID-19 have a significant increase in ABHD5 expression
+#compared to the patients without COVID-19
+#such trend is observed in both female and male population
+```
+
+
+
