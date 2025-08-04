@@ -1,0 +1,203 @@
+---
+title: "Final project"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-07-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Identify one gene, one continuous covariate, and two categorical covariates in the provided dataset. Generate the following three plots using ggplot2 for your covariates of choice: charlson score, disease status, sex
+
+```{r, include=FALSE}
+
+### Read in files.
+
+setwd("/Users/mengyingxia/Desktop/QBS103/Final_project")
+
+#check where we are
+getwd()
+
+#use read.csv
+gene_exp  <- read.csv(file ="QBS103_GSE157103_genes.csv",row.names=1)
+meta_data <- read.csv(file = "QBS103_GSE157103_series_matrix-1.csv",row.names=1)
+
+#check missingness in gene expression data
+missingness_check <- sapply(gene_exp, anyNA)
+class(missingness_check)
+gene_with_missingness <- names(missingness_check)[missingness_check == TRUE]
+print(gene_with_missingness)
+#there is no missing value in gene expression data
+```
+
+combine gene expression data and demographic data
+
+```{r, include=FALSE}
+
+#reshape the gene expression data
+exp_gene <- as.data.frame(t(gene_exp))
+
+#there is one row named differently in two data sets, locate and rename it
+setdiff(rownames(meta_data),rownames(exp_gene))
+setdiff(rownames(exp_gene),rownames(meta_data))
+
+#the age was missing for this participant
+rownames(meta_data)[rownames(meta_data) == "COVID_06_:y_male_NonICU"] <- "COVID_06_missing_male_NonICU"
+rownames(exp_gene)[rownames(exp_gene) == "COVID_06_.y_male_NonICU"] <- "COVID_06_missing_male_NonICU"
+
+#check if the rowname is identical after renaming
+identical(rownames(meta_data), rownames(exp_gene))
+
+#merge
+df <- merge(meta_data, exp_gene, by = "row.names")
+
+#change the rowname and drop the first column which is rowname
+rownames(df) <- df[,1]
+df <- df[,-1]
+
+
+#to clean up the categorical data to be used in the plots: sex and disease status
+#change the name of each level
+df <- df[which(!df$sex == " unknown"),]
+df$sex[df$sex == " female"] <- "Female"
+df$sex[df$sex == " male"] <- "Male"
+df$sex<-as.factor(df$sex)
+
+dim(df)
+
+levels(factor(df$sex))
+
+#check the spelling of each category, pay attention to the blank in front of the character
+table(df$sex)
+levels(df$sex) 
+
+#check the spelling of each category
+table(df$disease_status)
+
+#change the name
+df$disease_status[df$disease_status == "disease state: COVID-19"] <- "COVID-19"
+df$disease_status[df$disease_status == "disease state: non-COVID-19"] <- "non-COVID-19"
+df$disease_status<-as.factor(df$disease_status)
+
+#check each category again
+table(df$disease_status)
+
+#rename columns
+colnames(df)[colnames(df) == "sex"] <- "Sex"
+colnames(df)[colnames(df) == "disease_status"] <- "Disease Status"
+colnames(df)[colnames(df) == "charlson_score"] <- "Charlson Score"
+```
+
+Function for three plots
+
+Your functions should take the following input: (1) the name of the data frame, (2) a list of 1 or more gene names, (3) 1 continuous covariate, and (4) two categorical covariates (10 pts) Select 2 additional genes (for a total of 3 genes) to look at and implement a loop to generate your figures using the function you created (10 pts)
+
+```{r}
+library(ggplot2) #to load ggplot
+library(ggpubr) #to load ggarrange
+
+plot_mx <- function(dat, gene, cont, cat1, cat2){
+  
+ h <- ggplot(dat, 
+             aes(x = .data[[gene]])) +
+    geom_histogram(aes(y = after_stat(density)*100), 
+                 binwidth = 5, 
+                 fill = "lightblue", 
+                 color = "white", 
+                 boundary = 0) +
+  geom_smooth(aes(y = after_stat(density)*100),
+              stat = "density", 
+              color = "#5B91BE" , 
+              linewidth = 0.5) +
+  labs(title = paste0("Distribution of the Gene Expression of ", gene), 
+       x = paste0("Gene Expression of ", gene), 
+       y = "Percent Density (%)") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),  
+    panel.grid.major = element_line(color = "gray", 
+                                    linewidth = 0.5, 
+                                    linetype = "dotted"),
+    panel.grid.minor = element_line(color = "gray", 
+                                    linewidth = 0.5, 
+                                    linetype = "dotted"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    panel.background = element_rect(fill = "white"),
+    axis.line = element_blank()  
+  )
+ 
+ plot(h)
+  
+  
+  s <- ggplot(dat, 
+              aes(x = .data[[cont]], 
+                  y = .data[[gene]], 
+                  color = .data[[cat1]])) +
+    geom_point(shape = 1, size = 1, stroke = 1)+
+    geom_smooth(method = "lm", linewidth = 1.2, fill = NA)+
+  labs(title = paste0("Distribution of the Gene Expression of ", 
+                      gene, "\n According to ", cont, " by ", cat1),
+       x = paste0(cont),
+       y = paste0("Gene Expression of ", gene),
+       color = cat1) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face="bold"),  
+    panel.background = element_rect(fill = "white"),
+    plot.background = element_rect(fill = "lightgray"),
+    panel.grid.major = element_line(color = "gray", 
+                                    linewidth = 0.5, 
+                                    linetype = "dotted"),
+    panel.grid.minor = element_line(color = "gray", 
+                                    linewidth = 0.5, 
+                                    linetype = "dotted"),
+    axis.line = element_line(color = "black"),
+    legend.position = "right")
+
+  plot(s)
+
+
+b <- ggplot(dat, 
+            aes(x = .data[[cat1]],
+                y = .data[[gene]],
+                fill = .data[[cat2]])) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  labs(title = paste0("Distribution of the Gene Expression of ", 
+                      gene, "\n by ", cat1, " and ", cat2),
+       x = cat1,
+       y = paste0("Gene Expression of ", gene),
+       fill = cat2) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face="bold"),  
+    panel.background = element_rect(fill = "white"),
+    plot.background = element_rect(fill = "lightgray"),
+    panel.border = element_rect(color = "black", 
+                                fill = NA, 
+                                linewidth = 0.8),
+    panel.grid = element_blank(),
+    axis.line = element_blank(),
+    legend.position = "right")
+
+  plot(b)
+
+  }
+
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+
+#loop for three genes (randomly picking)
+gene_set <- c("ABHD5", "AAAS", "AASDHPPT")
+
+
+for (i in gene_set){
+
+plot_mx(df, i, "Charlson Score", "Sex", "Disease Status")
+  
+}
+
+```
